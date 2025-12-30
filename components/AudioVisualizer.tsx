@@ -1,12 +1,12 @@
-
 import React, { useEffect, useRef } from 'react';
 
 interface AudioVisualizerProps {
   analyser: AnalyserNode | null;
   isActive: boolean;
+  color?: string;
 }
 
-const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ analyser, isActive }) => {
+const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ analyser, isActive, color = '#3b82f6' }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -26,15 +26,42 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ analyser, isActive })
       analyser.getByteFrequencyData(dataArray);
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const barWidth = (canvas.width / bufferLength) * 2.5;
-      let barHeight;
-      let x = 0;
 
-      for (let i = 0; i < bufferLength; i++) {
-        barHeight = dataArray[i] / 2;
-        ctx.fillStyle = `rgb(59, 130, 246)`; // Tailwind Blue-500
-        ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
-        x += barWidth + 1;
+      const centerY = canvas.height / 2;
+      const barCount = 40; 
+      const barWidth = canvas.width / barCount;
+      const spacing = 2;
+      const step = Math.floor(bufferLength / barCount);
+
+      for (let i = 0; i < barCount; i++) {
+        const dataIdx = i * step;
+        let barHeight = (dataArray[dataIdx] / 255) * (canvas.height * 0.8);
+        if (barHeight < 2) barHeight = 2;
+
+        const x = i * barWidth;
+        const gradient = ctx.createLinearGradient(0, centerY - barHeight / 2, 0, centerY + barHeight / 2);
+        gradient.addColorStop(0, `${color}00`); 
+        gradient.addColorStop(0.5, color);      
+        gradient.addColorStop(1, `${color}00`); 
+
+        ctx.fillStyle = gradient;
+        const radius = (barWidth - spacing) / 2;
+        
+        ctx.beginPath();
+        const rectX = x + spacing / 2;
+        const rectY = centerY - barHeight / 2;
+        const rectW = barWidth - spacing;
+        const rectH = barHeight;
+        
+        ctx.roundRect(rectX, rectY, rectW, rectH, radius);
+        ctx.fill();
+
+        if (barHeight > 15) {
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = color;
+        } else {
+          ctx.shadowBlur = 0;
+        }
       }
     };
 
@@ -43,15 +70,23 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ analyser, isActive })
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [analyser, isActive]);
+  }, [analyser, isActive, color]);
 
   return (
-    <canvas 
-      ref={canvasRef} 
-      width={300} 
-      height={40} 
-      className="w-full h-12 rounded-lg opacity-40"
-    />
+    <div className="relative w-full group">
+      <canvas 
+        ref={canvasRef} 
+        width={600} 
+        height={80} 
+        className="w-full h-16 transition-opacity duration-500"
+        style={{ opacity: isActive ? 1 : 0.2 }}
+      />
+      {!isActive && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="h-[1px] w-full bg-slate-200 dark:bg-slate-800 opacity-50"></div>
+        </div>
+      )}
+    </div>
   );
 };
 
