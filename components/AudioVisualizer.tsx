@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef } from 'react';
 
 interface AudioVisualizerProps {
@@ -10,57 +11,73 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ analyser, isActive, c
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    if (!isActive || !analyser || !canvasRef.current) return;
-
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
     const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
+    if (!canvas) return;
 
+    const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     let animationFrameId: number;
+    const barCount = 60;
+    const bufferLength = analyser ? analyser.frequencyBinCount : 0;
+    const dataArray = new Uint8Array(bufferLength);
 
     const draw = () => {
       animationFrameId = requestAnimationFrame(draw);
-      analyser.getByteFrequencyData(dataArray);
+      
+      if (isActive && analyser) {
+        analyser.getByteFrequencyData(dataArray);
+      } else {
+        // Clear data when not active to show baseline
+        dataArray.fill(0);
+      }
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+      const spacing = 3;
+      const barWidth = (canvas.width / barCount) - spacing;
+      const step = bufferLength > 0 ? Math.floor(bufferLength / barCount) : 1;
       const centerY = canvas.height / 2;
-      const barCount = 40; 
-      const barWidth = canvas.width / barCount;
-      const spacing = 2;
-      const step = Math.floor(bufferLength / barCount);
 
       for (let i = 0; i < barCount; i++) {
         const dataIdx = i * step;
-        let barHeight = (dataArray[dataIdx] / 255) * (canvas.height * 0.8);
-        if (barHeight < 2) barHeight = 2;
-
-        const x = i * barWidth;
-        const gradient = ctx.createLinearGradient(0, centerY - barHeight / 2, 0, centerY + barHeight / 2);
-        gradient.addColorStop(0, `${color}00`); 
-        gradient.addColorStop(0.5, color);      
-        gradient.addColorStop(1, `${color}00`); 
-
-        ctx.fillStyle = gradient;
-        const radius = (barWidth - spacing) / 2;
+        // Normalize and scale height. 
+        // We use a baseline height of ~6px to make it look "full" even when silent.
+        let barHeight = (dataArray[dataIdx] / 255) * (canvas.height * 0.9);
         
+        // Aesthetic "resting" state bars
+        const minHeight = 6;
+        if (barHeight < minHeight) {
+          // Add a tiny bit of random jitter for the resting state to look "alive"
+          barHeight = minHeight + (isActive ? Math.random() * 2 : 0);
+        }
+
+        const x = i * (barWidth + spacing);
+        const y = centerY - (barHeight / 2);
+
+        // Simple but high-end look
+        ctx.fillStyle = color;
+        // Reduce opacity if inactive
+        ctx.globalAlpha = isActive ? 1.0 : 0.2;
+        
+        // Draw centered rounded bar
         ctx.beginPath();
-        const rectX = x + spacing / 2;
-        const rectY = centerY - barHeight / 2;
-        const rectW = barWidth - spacing;
-        const rectH = barHeight;
-        
-        ctx.roundRect(rectX, rectY, rectW, rectH, radius);
+        if (ctx.roundRect) {
+          ctx.roundRect(x, y, barWidth, barHeight, barWidth / 2);
+        } else {
+          // Fallback for older browsers
+          ctx.rect(x, y, barWidth, barHeight);
+        }
         ctx.fill();
-
-        if (barHeight > 15) {
+        
+        // Subtle glow only when active and reacting to sound
+        if (isActive && barHeight > 20) {
+          ctx.save();
           ctx.shadowBlur = 10;
           ctx.shadowColor = color;
-        } else {
-          ctx.shadowBlur = 0;
+          ctx.globalAlpha = 0.4;
+          ctx.fill();
+          ctx.restore();
         }
       }
     };
@@ -73,19 +90,16 @@ const AudioVisualizer: React.FC<AudioVisualizerProps> = ({ analyser, isActive, c
   }, [analyser, isActive, color]);
 
   return (
-    <div className="relative w-full group">
+    <div className="relative w-full overflow-hidden py-4">
       <canvas 
         ref={canvasRef} 
-        width={600} 
-        height={80} 
-        className="w-full h-16 transition-opacity duration-500"
-        style={{ opacity: isActive ? 1 : 0.2 }}
+        width={800} 
+        height={100} 
+        className="w-full h-24 transition-all duration-500 ease-in-out"
+        style={{ 
+          filter: isActive ? 'none' : 'grayscale(0.5) opacity(0.5)'
+        }}
       />
-      {!isActive && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="h-[1px] w-full bg-slate-200 dark:bg-slate-800 opacity-50"></div>
-        </div>
-      )}
     </div>
   );
 };
